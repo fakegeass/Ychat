@@ -24,8 +24,8 @@ func main() {
 	newClient := &client{userName, ""}
 	input := bufio.NewScanner(os.Stdin)
 	if input.Scan() {
-		newClient.userName = input.Text()
-		fmt.Printf("Your name is %v\n",newClient.userName)
+		newClient.userName = input.Text()+"\n"
+		fmt.Printf("Welcome  %v\n",newClient.userName)
 	}
 	_, err = fmt.Fprintf(conn, newClient.userName)
 	if err != nil {
@@ -35,7 +35,7 @@ func main() {
 	fmt.Println("Send name done!")
 	inputMsg := bufio.NewScanner(os.Stdin)
 		for inputMsg.Scan() {
-			newClient.msg = inputMsg.Text()
+			newClient.msg = inputMsg.Text()+"\n"
 			_, err = fmt.Fprintf(conn, newClient.msg)
 		if err != nil {
 			fmt.Printf("Send error! Message is:%v\n", newClient.msg)
