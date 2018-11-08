@@ -17,7 +17,7 @@ type client struct {
 	userPass string
 }
 
-var conSql redis.Conn
+const debug bool = false
 
 func init(){
 	
@@ -28,8 +28,6 @@ func init(){
 }
 
 func main() {
-	conSql,_:=redis.Dial("tcp","127.0.0.1:6379")
-	defer conSql.Close()
 	serverPort := "8000"
 	if len(os.Args) == 2 {
 		serverPort = os.Args[1]
@@ -38,99 +36,87 @@ func main() {
 	if err != nil {
 		fmt.Printf("占用端口失败！\n")
 	}
-	//fmt.Printf("sql-be %v\n",conSql)
+	allClient:=make(map[net.Conn]bool) 
 	for {
 		conn, err := ln.Accept()
+		allClient[conn]=true
 		//fmt.Printf("New client come in!\n")
 		if err != nil {
 			fmt.Printf("%v！\n", err)
 		}
-		go handleConnection(conn,conSql)
+		go handleConnection(conn,&allClient)
 	}
 }
 
-func handleConnection(conn net.Conn,conSql redis.Conn) {
+//消息格式：code+msg，其中code：0表示成功，1表示数据库链接问题，2表示密码错误，3表示用户未上线，4表示用户重复上线
+//5表示服务器端错误
+func handleConnection(conn net.Conn,allClient *map[net.Conn]bool) {
 	var newClient client
 	newClient.userAddr = conn.RemoteAddr().String()
 	//fmt.Printf("New client come in!Address is %v\n", newClient.userAddr)
-
 	inputMsg := bufio.NewScanner(conn)
 	for inputMsg.Scan() {
-		if newClient.online == false {
-			/*newClient.userName = inputMsg.Text()
-			tempPass,err:=conSql.Do("get",newClient.userName)
-			if err!=nil{
-				fmt.Println("Redis can't reach!")
-			}else if tempPass==""{
-				_,err:=conSql.Do("set",client.userName,client.userPass)
-			}else if tempPass!=client.userPass{
-				fmt.Printf("Password for %v not correct!\n",client.userName)
-				return
-			}
-			}
-			fmt.Printf("%v enter the room\n", newClient.userName)*/
-			msg:=inputMsg.Text()
-			code:=handleMsg([]byte(msg),&newClient,conn,conSql)
-			if code==2{
-				_, _= fmt.Fprintf(conn, strconv.Itoa(2)+"\n")
-			}else if code==0{
-				_, _= fmt.Fprintf(conn, strconv.Itoa(0)+"\n")
-			}
-
-		} else {
-			msg:=inputMsg.Text()
-			code:=handleMsg([]byte(msg),&newClient,conn,conSql)
-			if code==3{
-				_, _ = fmt.Fprintf(conn, strconv.Itoa(3)+"\n")
-			}else if code==0{
-				_,_ = fmt.Fprintf(conn, strconv.Itoa(0)+"\n")
-			}else if code==2{
-				_, _= fmt.Fprintf(conn, strconv.Itoa(2)+"\n")
-			}
-		}
-
-	}
-	fmt.Printf("%v leave the room.\n",newClient.userName)
-	newClient.online=false
-	defer conn.Close()
-}
-
-//消息格式：code+msg，其中code：0表示成功，1表示数据库链接问题，2表示密码错误，3表示用户未上线
-func handleMsg(msg []byte, newclient *client,conn net.Conn,conSql redis.Conn) int {
-	if len(msg)==0{
-		return 0
+		msg:=inputMsg.Text()
+	if msg==""{
+		fmt.Fprintf(conn, strconv.Itoa(0)+"\n")
+	}else{
+	if debug{
+		fmt.Printf("Received msg: %#v",msg)
 	}
 	switch msg[0]{
 	case []byte("0")[0]:
-		newclient.userName=string(msg[1:])
-		return 0
+		if newClient.online==true{
+			fmt.Fprintf(conn, strconv.Itoa(4)+"\n")
+			
+		}
+		newClient.userName=string(msg[1:])
+		fmt.Fprintf(conn, strconv.Itoa(0)+"\n")
+		
 	case []byte("1")[0]:
-		tempPass,err:=redis.String(conSql.Do("get",newclient.userName))
+		if newClient.online==true{
+			fmt.Fprintf(conn, strconv.Itoa(4)+"\n")
+			
+		}
+		conSql,err:=redis.Dial("tcp","127.0.0.1:6379")
+		defer conSql.Close()
+		tempPass,_:=redis.String(conSql.Do("get",newClient.userName))
 		//fmt.Printf("%T",tempPass)
-		newclient.userPass=string(msg[1:])
+		newClient.userPass=string(msg[1:])
 			if err!=nil{
 				fmt.Println("Redis can't reach!")
-				return 1
+				fmt.Fprintf(conn, strconv.Itoa(5)+"\n")
+				 
 			}else if tempPass==""{
-				_,err=conSql.Do("set",newclient.userName,newclient.userPass)
-				return 0
-			}else if tempPass!=newclient.userPass{
-				fmt.Printf("inputPass is %v,saved is%v\n",newclient.userPass,tempPass)
-				fmt.Printf("Password for %v not correct!\n",newclient.userName)
-				return 2
+				_,err=conSql.Do("set",newClient.userName,newClient.userPass)
+				newClient.online=true
+				fmt.Fprintf(conn, strconv.Itoa(0)+"\n")
+				 
+			}else if tempPass!=newClient.userPass{
+				fmt.Printf("inputPass is %v,saved is %v\n",newClient.userPass,tempPass)
+				fmt.Printf("Password for %v not correct!\n",newClient.userName)
+				fmt.Fprintf(conn, strconv.Itoa(2)+"\n")
+				 
 			}else{
-				newclient.online=true
-				fmt.Printf("%v enter the room\n", newclient.userName)
-				return 0
+				newClient.online=true
+				fmt.Printf("%v enter the room\n", newClient.userName)
+				fmt.Fprintf(conn, strconv.Itoa(0)+"\n")
+				
 			}
 		case []byte("2")[0]:
-			if newclient.online!=true{
-				fmt.Printf("User(%v) is not online.\n",newclient.userName)
-				return 3
+			if newClient.online!=true{
+				fmt.Printf("User(%v) is not online.\n",newClient.userName)
+				fmt.Fprintf(conn, strconv.Itoa(3)+"\n")
+				 
 			}
-			fmt.Printf("%v:%v\n", newclient.userName, string(msg[1:]))
-			fmt.Fprintf(conn,"%v:%v\n",newclient.userName,string(msg[1:]))
-			return 0
-	}
-	return 0
+			fmt.Printf("%v:%v\n", newClient.userName, string(msg[1:]))
+			for connTemp:=range *allClient{
+				fmt.Fprintf(connTemp,"0%v:%v\n",newClient.userName,string(msg[1:]))
+			}
+			
+	}}
+}
+	fmt.Printf("%v leave the room.\n",newClient.userName)
+	newClient.online=false
+	defer conn.Close()
+	return 
 }

@@ -14,6 +14,7 @@ type client struct {
 	msg      string
 }
 
+
 func main() {
 	serverAddr := "127.0.0.1"
 	if len(os.Args) == 2 {
@@ -44,25 +45,17 @@ func main() {
 	if input.Scan() {
 		newClient.userPass = input.Text()
 	}
-	_, err = fmt.Fprintf(conn, strconv.Itoa(1)+newClient.userName+"\n")
+	_, err = fmt.Fprintf(conn, strconv.Itoa(1)+newClient.userPass+"\n")
 	if err != nil {
 		fmt.Printf("Password send error!\n")
 		os.Exit(-1)
 	}
 	go handleMsgFromServer(conn)
-	/*if msg.Scan(){
-		code:=msg.Text()
-		if code[0]==[]byte("2")[0]{
-			fmt.Println("Wrong password!")
-			os.Exit(2)
-		}
-	}*/
-	//fmt.Println("Send name done!")
 	inputMsg := bufio.NewScanner(os.Stdin)
 	for inputMsg.Scan() {
 		newClient.msg = inputMsg.Text() + "\n"
 		_, err = fmt.Fprintf(conn, strconv.Itoa(2)+newClient.msg+"\n")
-		
+
 		if err != nil {
 			fmt.Printf("Send error! Message is:%v\n", newClient.msg)
 			os.Exit(-1)
@@ -76,15 +69,29 @@ func handleMsgFromServer(conn net.Conn){
 	input:=bufio.NewScanner(conn)
 	for input.Scan(){
 		code:=input.Text()
-		if code[0]==[]byte("3")[0]{
-			fmt.Println("Please logon in first!")
-		}else if code[0]==[]byte("0")[0]{
-			continue
-		}else if code[0]==[]byte("2")[0]{
-			fmt.Println("Wrong password!")
-			os.Exit(2)
+		switch code[0]{
+		case []byte("3")[0]:
+				fmt.Println("Please logon in first!")
+				os.Exit(3)
+		case []byte("0")[0]:
+				break
+		case []byte("1")[0]:
+				fmt.Println("Sever error!")
+				os.Exit(1)
+		case []byte("2")[0]:
+				fmt.Println("Wrong password!")
+				os.Exit(2)
+		case []byte("4")[0]:
+				fmt.Println("Login Repeat!")
+				os.Exit(4)
+		case []byte("5")[0]:
+				fmt.Println("Login Repeat!")
+				os.Exit(4)
+		default:
+				fmt.Println("Sever error!")
+				os.Exit(1)
 		}
-			fmt.Println(code)
+			fmt.Println(code[1:])
 		
-	}
+}
 }
